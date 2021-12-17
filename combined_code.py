@@ -23,7 +23,7 @@ from sklearn.metrics import classification_report
 ### Clean data
 print("Cleaning data...")
 
-file_path = "C:\\Users\\agozacan\\OneDrive - Humberside Fire and Rescue Service\\RBIP Project\\EPC Data\\New EPC\\"
+file_path = "C:\\path_to_data\\"
 
 loc_auths = ["ERY", "Hull", "NLincs", "NELincs"]
 
@@ -304,10 +304,17 @@ print("Random Forest Proportion Correctly Guessed:", rf_accuracy)
 print("Logistic Regression Proportion Correctly Guessed:", lr_accuracy)
 print("XGBoost Proportion Correctly Guessed:", xg_accuracy)
 
+all_adaprobs = adaboost.predict_proba(df.iloc[:,:-1])
 adaprobs = adaboost.predict_proba(X_test)
 rfprobs = rf.predict_proba(X_test)
 lrprobs = logreg.predict_proba(X_test)
 xgprobs = xgboost.predict_proba(X_test)
+
+positive_probs = [x[1] for x in all_adaprobs]
+
+df.loc[:, "QUARTILE"] = pd.qcut(positive_probs, q=4, labels=[4, 3, 2, 1])
+
+df.to_csv(file_path + "output.csv", index=False)
 
 probas = [adaprobs, rfprobs, lrprobs, xgprobs]
 titles = ["AdaBoost", "Random Forest", "Logistic Regression", "XGBoost"]
@@ -320,7 +327,7 @@ plt.show()
 
 features = rf.feature_importances_
 
-ftrs = pd.DataFrame({"column_name": df.columns[:-1], "score": features}).sort_values(by = "score", ascending = False).reset_index(drop=True)
+ftrs = pd.DataFrame({"column_name": df.columns[:-2], "score": features}).sort_values(by = "score", ascending = False).reset_index(drop=True)
 
 plt.figure(figsize=(10,8))
 sns.barplot(y = ftrs.loc[:30, "column_name"], x = ftrs.loc[:30, "score"])
