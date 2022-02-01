@@ -35,9 +35,14 @@ for i in range(len(loc_auths)):
 
     else:
 
-        epc_df = pd.concat([epc_df, pd.read_csv(file_path + "certificates_" + loc_auths[i] + ".csv")]).reset_index(drop=True)
+        epc_df = pd.concat([epc_df, pd.read_csv(file_path +
+                                                "certificates_" +
+                                                loc_auths[i] +
+                                                ".csv")]).reset_index(drop=True)
 
-epc_df.drop(epc_df[epc_df["ASSET_RATING_BAND"].isin(["A+", "INVALID!"])].index, axis=0, inplace=True)
+epc_df.drop(epc_df[epc_df["ASSET_RATING_BAND"].isin(["A+", "INVALID!"])].index,
+            axis=0,
+            inplace=True)
 
 epc_df.reset_index(drop=True, inplace=True)
 
@@ -168,11 +173,13 @@ inc_df["GAZETTEER_URN"] = [int(uprn) for uprn in inc_df["GAZETTEER_URN"]]
 
 inc_df["YEAR"] = ["inc." + str(inc_df.loc[i, "CREATION_DATE"])[:4] for i in range(len(inc_df))]
 
-inc_crosstab = pd.crosstab(inc_df["GAZETTEER_URN"], inc_df["YEAR"]).rename_axis("UPRN").reset_index()
+inc_crosstab = pd.crosstab(inc_df["GAZETTEER_URN"],
+                           inc_df["YEAR"]).rename_axis("UPRN").reset_index()
 
 df = rbip_epc_df.merge(right=inc_crosstab, left_on="UPRN", right_on="UPRN", how="inner")
 
-model_cols = ["RISK_OF_FIRE",
+model_cols = ["UPRN",
+              "RISK_OF_FIRE",
               "SEVERITY_OF_FIRE",
               "SLEEPING_RISK",
               "SLEEPING_RISK_ABOVE",
@@ -196,7 +203,13 @@ model_cols = ["RISK_OF_FIRE",
               "inc.2019",
               "inc.2020"]
 
-df["ASSET_RATING_BAND"] = df["ASSET_RATING_BAND"].replace(["A", "B", "C", "D", "E", "F", "G"], range(7))
+df["ASSET_RATING_BAND"] = df["ASSET_RATING_BAND"].replace(["A",
+                                                           "B",
+                                                           "C",
+                                                           "D",
+                                                           "E",
+                                                           "F",
+                                                           "G"], range(7))
 
 categorical_cols = ["SLEEPING_RISK",
                     "PROPERTY_TYPE",
@@ -223,6 +236,11 @@ df.drop(categorical_cols, axis=1, inplace=True)
 
 df = encoded_df.join(df)
 
+cols = df.columns.tolist()
+cols.remove("UPRN")
+cols.insert(0, "UPRN")
+df = df[cols]
+
 ncols = len(df.columns)
 
 ### Train model
@@ -238,9 +256,9 @@ training_set = pd.DataFrame(X)
 
 training_set["inc.2020.bool"] = y
 
-X_train = training_set.iloc[:,:-1]
+X_train = training_set.iloc[:,1:-1]
 y_train = training_set.iloc[:,-1]
-X_test = test_set.iloc[:,:-1]
+X_test = test_set.iloc[:,1:-1]
 y_test = test_set.iloc[:,-1]
 
 adaboost = AdaBoostClassifier(random_state=1)
@@ -276,23 +294,36 @@ rf_positives = len(test_set[test_set["RF Predictions"] == 1.0])
 logreg_positives = len(test_set[test_set["LogReg Predictions"] == 1.0])
 XGBoost_positives = len(test_set[test_set["XGBoost Predictions"] == 1.0])
 
-print(f"There are {len(test_set)} entries in the test set, of which {real_positives} are real positives")
+print(f'''There are {len(test_set)} entries in the test set,
+       of which {real_positives} are real positives''')
 print(f"AdaBoost predicted {adaboost_positives} positives")
 print(f"Random Forest predicted {rf_positives} positives")
 print(f"Logistic Regression predicted {logreg_positives} positives")
 print(f"XGBoost predicted {XGBoost_positives} positives")
 
-print("AdaBoost:\n", classification_report(test_set.iloc[:,ncols-1], test_set.iloc[:,ncols]))
-print("Random Forest:\n", classification_report(test_set.iloc[:,ncols-1], test_set.iloc[:,ncols+1]))
-print("Logistic Regression:\n", classification_report(test_set.iloc[:,ncols-1], test_set.iloc[:,ncols+2]))
-print("XGBoost:\n", classification_report(test_set.iloc[:,ncols-1], test_set.iloc[:,ncols+3]))
+print("AdaBoost:\n", classification_report(test_set.iloc[:,ncols-1],
+                                           test_set.iloc[:,ncols]))
+print("Random Forest:\n", classification_report(test_set.iloc[:,ncols-1],
+                                                test_set.iloc[:,ncols+1]))
+print("Logistic Regression:\n", classification_report(test_set.iloc[:,ncols-1],
+                                                      test_set.iloc[:,ncols+2]))
+print("XGBoost:\n", classification_report(test_set.iloc[:,ncols-1],
+                                          test_set.iloc[:,ncols+3]))
 
 length = len(test_set.iloc[:,ncols-1])
 
-ada_no_matched = sum([(test_set.iloc[i,ncols-1] * test_set.iloc[i,ncols]) + ((1-test_set.iloc[i,ncols-1]) * (1-test_set.iloc[i,ncols])) for i in range(length)])
-rf_no_matched = sum([(test_set.iloc[i,ncols-1] * test_set.iloc[i,ncols+1]) + ((1-test_set.iloc[i,ncols-1]) * (1-test_set.iloc[i,ncols+1])) for i in range(length)])
-lr_no_matched = sum([(test_set.iloc[i,ncols-1] * test_set.iloc[i,ncols+2]) + ((1-test_set.iloc[i,ncols-1]) * (1-test_set.iloc[i,ncols+2])) for i in range(length)])
-xg_no_matched = sum([(test_set.iloc[i,ncols-1] * test_set.iloc[i,ncols+3]) + ((1-test_set.iloc[i,ncols-1]) * (1-test_set.iloc[i,ncols+3])) for i in range(length)])
+ada_no_matched = sum([(test_set.iloc[i,ncols-1] * test_set.iloc[i,ncols]) +
+                      ((1-test_set.iloc[i,ncols-1]) * (1-test_set.iloc[i,ncols]))
+                      for i in range(length)])
+rf_no_matched = sum([(test_set.iloc[i,ncols-1] * test_set.iloc[i,ncols+1]) +
+                     ((1-test_set.iloc[i,ncols-1]) * (1-test_set.iloc[i,ncols+1]))
+                     for i in range(length)])
+lr_no_matched = sum([(test_set.iloc[i,ncols-1] * test_set.iloc[i,ncols+2]) +
+                     ((1-test_set.iloc[i,ncols-1]) * (1-test_set.iloc[i,ncols+2]))
+                     for i in range(length)])
+xg_no_matched = sum([(test_set.iloc[i,ncols-1] * test_set.iloc[i,ncols+3]) +
+                     ((1-test_set.iloc[i,ncols-1]) * (1-test_set.iloc[i,ncols+3]))
+                     for i in range(length)])
 
 ada_accuracy = ada_no_matched / length
 rf_accuracy = rf_no_matched / length
@@ -304,7 +335,7 @@ print("Random Forest Proportion Correctly Guessed:", rf_accuracy)
 print("Logistic Regression Proportion Correctly Guessed:", lr_accuracy)
 print("XGBoost Proportion Correctly Guessed:", xg_accuracy)
 
-all_adaprobs = adaboost.predict_proba(df.iloc[:,:-1])
+all_adaprobs = adaboost.predict_proba(df.iloc[:,1:-1])
 adaprobs = adaboost.predict_proba(X_test)
 rfprobs = rf.predict_proba(X_test)
 lrprobs = logreg.predict_proba(X_test)
@@ -327,7 +358,12 @@ plt.show()
 
 features = rf.feature_importances_
 
-ftrs = pd.DataFrame({"column_name": df.columns[:-2], "score": features}).sort_values(by = "score", ascending = False).reset_index(drop=True)
+ftrs = pd.DataFrame({"column_name": df.columns[1:-2],
+                     "score": features}).sort_values(
+                                        by="score",
+                                        ascending=False).reset_index(drop=True)
+
+ftrs.to_csv(file_path + "feature_importance_scores.csv", index=False)
 
 plt.figure(figsize=(10,8))
 sns.barplot(y = ftrs.loc[:30, "column_name"], x = ftrs.loc[:30, "score"])
