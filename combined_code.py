@@ -25,7 +25,7 @@ from sklearn.impute import KNNImputer
 ### Clean data
 print("Cleaning data...")
 
-file_path = "C:\\path_to_data\\"
+file_path = "C:\\Users\\agozacan\\OneDrive - Humberside Fire and Rescue Service\\RBIP Project\\Input and Output\\"
 
 loc_auths = ["ERY", "Hull", "NLincs", "NELincs"]
 
@@ -126,6 +126,7 @@ epc_df.reset_index(drop=True, inplace=True)
 
 query = '''
 select UPRN,
+       CUSTODIAN,
        RISK_OF_FIRE,
        SEVERITY_OF_FIRE,
        SLEEPING_RISK,
@@ -184,6 +185,7 @@ inc_crosstab = pd.crosstab(inc_df["GAZETTEER_URN"],
 rbip_epc_inc_df = rbip_epc_df.merge(right=inc_crosstab, left_on="UPRN", right_on="UPRN", how="left")
 
 model_cols = ["UPRN",
+              "CUSTODIAN",
               "RISK_OF_FIRE",
               "SEVERITY_OF_FIRE",
               "SLEEPING_RISK",
@@ -216,6 +218,11 @@ rbip_epc_inc_df["ASSET_RATING_BAND"] = rbip_epc_inc_df["ASSET_RATING_BAND"].repl
                                                            "F",
                                                            "G"], range(7))
 
+rbip_epc_inc_df["CUSTODIAN"] = rbip_epc_inc_df["CUSTODIAN"].replace(
+                                                    ["Crew",
+                                                     "Protection Team"],
+                                                    [0, 1])
+
 categorical_cols = ["SLEEPING_RISK",
                     "PROPERTY_TYPE",
                     "MAIN_HEATING_FUEL"]
@@ -244,21 +251,19 @@ model_df.reset_index(drop=True, inplace=True)
 
 impute_df = rbip_epc_inc_df.copy()
 
-mode_values = []
-
-for col in categorical_cols:
-
-    mode = stats.mode(impute_df[~impute_df[col].isnull()][col])[0][0]
-
-    mode_values.append(mode)
-
 for j in range(len(categorical_cols)):
 
-    mode_indices = impute_df.index[impute_df[categorical_cols[j]].isnull()]
+    null_indices = impute_df.index[impute_df[categorical_cols[j]].isna()]
 
-    for i in mode_indices:
+    non_null_indices = impute_df.index[~impute_df[categorical_cols[j]].isna()]
 
-        impute_df.loc[i, categorical_cols[j]] = mode_values[j]
+    mode = stats.mode(impute_df.loc[non_null_indices, categorical_cols[j]])[0][0]
+
+    impute_df.loc[null_indices, categorical_cols[j]] = mode
+
+null_indices = impute_df.index[impute_df["CUSTODIAN"].isna()]
+
+impute_df.loc[null_indices, "CUSTODIAN"] = 0
 
 imputer = KNNImputer(weights="distance")
 
@@ -286,6 +291,10 @@ cols = model_df.columns.tolist()
 
 cols.remove("UPRN")
 
+cols.remove("CUSTODIAN")
+
+cols.insert(0, "CUSTODIAN")
+
 cols.insert(0, "UPRN")
 
 model_df = model_df[cols]
@@ -310,6 +319,10 @@ cols = impute_df.columns.tolist()
 
 cols.remove("UPRN")
 
+cols.remove("CUSTODIAN")
+
+cols.insert(0, "CUSTODIAN")
+
 cols.insert(0, "UPRN")
 
 impute_df = impute_df[cols]
@@ -333,9 +346,9 @@ training_set = pd.DataFrame(X)
 
 training_set["inc.2020.bool"] = y
 
-X_train = training_set.iloc[:,1:-1]
+X_train = training_set.iloc[:,2:-1]
 y_train = training_set.iloc[:,-1]
-X_test = test_set.iloc[:,1:-1]
+X_test = test_set.iloc[:,2:-1]
 y_test = test_set.iloc[:,-1]
 
 adaboost = AdaBoostClassifier(random_state=1)
@@ -430,16 +443,31 @@ print("MLP Proportion Correctly Guessed:", mlp_accuracy)
 ### PRODUCE OUTPUT PLOTS / TABLES
 print("Producing output...")
 
-all_adaprobs = adaboost.predict_proba(impute_df.iloc[:,1:-1])
+all_adaprobs = adaboost.predict_proba(impute_df.iloc[:,2:-1])
 adaprobs = adaboost.predict_proba(X_test)
 rfprobs = rf.predict_proba(X_test)
 lrprobs = logreg.predict_proba(X_test)
 xgprobs = xgboost.predict_proba(X_test)
 mlpprobs = mlp.predict_proba(X_test)
 
-positive_probs = [x[1] for x in all_adaprobs]
+positive_probs = (np.array([x[1] for x in all_adaprobs]) +
+                  np.random.random(size=len(impute_df)) * 1e-5)
 
-impute_df.loc[:, "QUARTILE"] = pd.qcut(positive_probs, q=4, labels=[4, 3, 2, 1])
+complex_indices = impute_df.index[impute_df["CUSTODIAN"] == 1]
+
+non_complex_indices = impute_df.index[impute_df["CUSTODIAN"] == 0]
+
+complex_positive_probs = [positive_probs[i] for i in complex_indices]
+
+non_complex_positive_probs = [positive_probs[i] for i in non_complex_indices]
+
+impute_df.loc[complex_indices, "QUARTILE"] = pd.qcut(complex_positive_probs,
+                                                     q=4,
+                                                     labels=[4, 3, 2, 1])
+
+impute_df.loc[non_complex_indices, "QUARTILE"] = pd.qcut(non_complex_positive_probs,
+                                                         q=4,
+                                                         labels=[4, 3, 2, 1])
 
 impute_df.to_csv(file_path + "output.csv", index=False)
 
@@ -454,7 +482,7 @@ for i in range(len(probas)):
 
 features = rf.feature_importances_
 
-ftrs = pd.DataFrame({"column_name": model_df.columns[1:-1],
+ftrs = pd.DataFrame({"column_name": model_df.columns[2:-1],
                      "score": features}).sort_values(
                                         by="score",
                                         ascending=False).reset_index(drop=True)
